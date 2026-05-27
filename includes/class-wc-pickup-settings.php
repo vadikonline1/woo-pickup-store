@@ -13,8 +13,8 @@ class WC_Pickup_Settings {
     public function add_admin_menu() {
         add_submenu_page(
             'woocommerce',
-            __('Pickup Store Settings', 'wc-pickup-store'),
-            __('Pickup Store', 'wc-pickup-store'),
+            __('Pickup-Store Settings', 'wc-pickup-store'),
+            __('Pickup-Store Settings', 'wc-pickup-store'),
             'manage_options',
             'wc-pickup-store-settings',
             array($this, 'settings_page')
