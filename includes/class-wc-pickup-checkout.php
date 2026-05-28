@@ -42,6 +42,7 @@ class WC_Pickup_Checkout {
         }
         
         $chosen_store = WC()->session->get('chosen_pickup_store');
+		$label_store = get_option('wcps_label_store', '🏪 Store');
         $placeholder = get_option('wcps_select_placeholder', '— Select a store —');
         
         $label_address = get_option('wcps_label_address', '📍 Address');
@@ -58,7 +59,7 @@ class WC_Pickup_Checkout {
         <div id="wcps-store-wrapper" class="wcps-store-wrapper" style="display: <?php echo $initial_display; ?>;">
             <div class="wcps-store-container">
                 <label for="pickup_store_id" class="wcps-store-label">
-                    🏪 <?php _e('Select pickup store:', 'wc-pickup-store'); ?> <span style="color: #a00;">*</span>
+                    <?php _e( esc_html($label_store) , 'wc-pickup-store'); ?> <span style="color: #a00;">*</span>
                 </label>
                 
                 <select name="pickup_store_id" id="pickup_store_id" class="wcps-store-select">
