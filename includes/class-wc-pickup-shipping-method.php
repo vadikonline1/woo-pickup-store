@@ -8,8 +8,8 @@ class WC_Pickup_Store_Shipping_Method extends WC_Shipping_Method {
     public function __construct($instance_id = 0) {
         $this->id = 'pickup_store';
         $this->instance_id = absint($instance_id);
-        $this->method_title = __('Personal Pickup', 'wc-pickup-store');
-        $this->method_description = __('Customer picks up order from a selected store.', 'wc-pickup-store');
+        $this->method_title = __('Personal Pickup', 'wc-pickup-store-main');
+        $this->method_description = __('Customer picks up order from a selected store.', 'wc-pickup-store-main');
         $this->supports = array(
             'shipping-zones',
             'instance-settings',
@@ -20,7 +20,7 @@ class WC_Pickup_Store_Shipping_Method extends WC_Shipping_Method {
         
         $this->title = isset($this->settings['title']) && !empty($this->settings['title']) 
             ? $this->settings['title'] 
-            : get_option('wcps_method_title', 'Personal Pickup');
+            : get_option('wcps_method_title', __('Personal Pickup', 'wc-pickup-store-main'));
     }
 
     public function init() {
@@ -33,22 +33,22 @@ class WC_Pickup_Store_Shipping_Method extends WC_Shipping_Method {
     public function init_form_fields() {
         $this->form_fields = array(
             'enabled' => array(
-                'title'       => __('Enable', 'wc-pickup-store'),
+                'title'       => __('Enable', 'wc-pickup-store-main'),
                 'type'        => 'checkbox',
-                'label'       => __('Enable this shipping method', 'wc-pickup-store'),
+                'label'       => __('Enable this shipping method', 'wc-pickup-store-main'),
                 'default'     => get_option('wcps_enabled', 'yes'),
             ),
             'title' => array(
-                'title'       => __('Method Title', 'wc-pickup-store'),
+                'title'       => __('Method Title', 'wc-pickup-store-main'),
                 'type'        => 'text',
-                'description' => __('Name displayed at checkout.', 'wc-pickup-store'),
-                'default'     => get_option('wcps_method_title', 'Personal Pickup'),
+                'description' => __('Name displayed at checkout.', 'wc-pickup-store-main'),
+                'default'     => get_option('wcps_method_title', __('Personal Pickup', 'wc-pickup-store-main')),
                 'desc_tip'    => true,
             ),
             'cost' => array(
-                'title'       => __('Shipping Cost', 'wc-pickup-store'),
+                'title'       => __('Shipping Cost', 'wc-pickup-store-main'),
                 'type'        => 'price',
-                'description' => __('Cost for pickup.', 'wc-pickup-store'),
+                'description' => __('Cost for pickup.', 'wc-pickup-store-main'),
                 'default'     => get_option('wcps_shipping_cost', 0),
                 'desc_tip'    => true,
             ),

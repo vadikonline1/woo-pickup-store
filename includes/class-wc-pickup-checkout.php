@@ -15,21 +15,11 @@ class WC_Pickup_Checkout {
         add_action('woocommerce_after_checkout_form', array($this, 'add_store_selector'), 20);
         add_action('woocommerce_checkout_process', array($this, 'validate_store_selection'));
         add_action('woocommerce_checkout_create_order', array($this, 'save_selected_store'), 10, 2);
-        
-        // Frontend display - thank you page (cu detalii complete)
         add_action('woocommerce_thankyou', array($this, 'display_pickup_info'), 5);
-        
-        // Email display (cu detalii complete)
         add_action('woocommerce_email_after_order_table', array($this, 'display_pickup_info_email'), 10, 4);
-        
-        // Scripts
         add_action('wp_enqueue_scripts', array($this, 'enqueue_scripts'));
         add_action('woocommerce_checkout_update_order_review', array($this, 'update_session_store'));
-        
-        // Admin order display - doar numele magazinului
         add_action('woocommerce_admin_order_data_after_shipping_address', array($this, 'display_pickup_admin_simple'));
-        
-        // Orders list column
         add_filter('manage_edit-shop_order_columns', array($this, 'add_pickup_store_column'), 20);
         add_action('manage_shop_order_posts_custom_column', array($this, 'display_pickup_store_column'), 20, 2);
     }
@@ -42,7 +32,6 @@ class WC_Pickup_Checkout {
         }
         
         $chosen_store = WC()->session->get('chosen_pickup_store');
-		$label_store = get_option('wcps_label_store', '🏪 Store');
         $placeholder = get_option('wcps_select_placeholder', '— Select a store —');
         
         $label_address = get_option('wcps_label_address', '📍 Address');
@@ -56,10 +45,10 @@ class WC_Pickup_Checkout {
         $initial_display = $is_pickup_initial ? 'block' : 'none';
         ?>
         
-        <div id="wcps-store-wrapper" class="wcps-store-wrapper" style="display: <?php echo $initial_display; ?>;">
+        <div id="wcps-store-wrapper" class="wcps-store-wrapper" style="display: <?php echo esc_attr($initial_display); ?>;">
             <div class="wcps-store-container">
                 <label for="pickup_store_id" class="wcps-store-label">
-                    <?php _e( esc_html($label_store) , 'wc-pickup-store'); ?> <span style="color: #a00;">*</span>
+                    🏪 <?php echo esc_html__('Select pickup store:', 'wc-pickup-store-main'); ?> <span style="color: #a00;">*</span>
                 </label>
                 
                 <select name="pickup_store_id" id="pickup_store_id" class="wcps-store-select">
@@ -141,10 +130,10 @@ class WC_Pickup_Checkout {
         
         <script type="text/javascript">
             (function($) {
-                var labelAddress = <?php echo json_encode($label_address); ?>;
-                var labelHours   = <?php echo json_encode($label_hours); ?>;
-                var labelPhone   = <?php echo json_encode($label_phone); ?>;
-                var labelEmail   = <?php echo json_encode($label_email); ?>;
+                var labelAddress = <?php echo wp_json_encode($label_address); ?>;
+                var labelHours   = <?php echo wp_json_encode($label_hours); ?>;
+                var labelPhone   = <?php echo wp_json_encode($label_phone); ?>;
+                var labelEmail   = <?php echo wp_json_encode($label_email); ?>;
                 var selectorMoved = false;
             
                 function displayStoreDetails() {
@@ -228,18 +217,37 @@ class WC_Pickup_Checkout {
         <?php
     }
     
+    /**
+     * Validate store selection at checkout
+     */
     public function validate_store_selection() {
+        // Nonce verification for checkout
+        if (!isset($_POST['woocommerce-process-checkout-nonce']) || 
+            !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['woocommerce-process-checkout-nonce'])), 'woocommerce-process_checkout')) {
+            return;
+        }
+        
         $chosen_methods = WC()->session->get('chosen_shipping_methods');
         $chosen_method = is_array($chosen_methods) ? $chosen_methods[0] : $chosen_methods;
         
         if (strpos($chosen_method, 'pickup_store') !== false) {
-            if (!isset($_POST['pickup_store_id']) || empty($_POST['pickup_store_id'])) {
-                wc_add_notice(__('Please select a store for order pickup.', 'wc-pickup-store'), 'error');
+            $store_id = isset($_POST['pickup_store_id']) ? intval($_POST['pickup_store_id']) : 0;
+            if (empty($store_id)) {
+                wc_add_notice(esc_html__('Please select a store for order pickup.', 'wc-pickup-store-main'), 'error');
             }
         }
     }
     
+    /**
+     * Save selected store to order
+     */
     public function save_selected_store($order, $data) {
+        // Nonce verification for checkout
+        if (!isset($_POST['woocommerce-process-checkout-nonce']) || 
+            !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['woocommerce-process-checkout-nonce'])), 'woocommerce-process_checkout')) {
+            return;
+        }
+        
         $chosen_methods = WC()->session->get('chosen_shipping_methods');
         $chosen_method = is_array($chosen_methods) ? $chosen_methods[0] : $chosen_methods;
         
@@ -261,60 +269,153 @@ class WC_Pickup_Checkout {
         }
     }
     
+    /**
+     * Update session store on checkout refresh
+     */
     public function update_session_store($post_data) {
+        // Security check - verify referer
+        $referer = isset($_SERVER['HTTP_REFERER']) ? sanitize_text_field(wp_unslash($_SERVER['HTTP_REFERER'])) : '';
+        if (empty($referer) || strpos($referer, 'checkout') === false) {
+            return;
+        }
+        
         parse_str($post_data, $form_data);
         if (isset($form_data['pickup_store_id']) && !empty($form_data['pickup_store_id'])) {
-            WC()->session->set('chosen_pickup_store', intval($form_data['pickup_store_id']));
+            $store_id = intval($form_data['pickup_store_id']);
+            WC()->session->set('chosen_pickup_store', $store_id);
         }
     }
     
-/**
- * Afișează informațiile complete în email
- */
-public function display_pickup_info_email($order, $sent_to_admin, $plain_text, $email) {
-    $store_name = $order->get_meta('_pickup_store_name');
-    
-    if (!$store_name || $sent_to_admin) {
-        return;
+    public function display_pickup_info($order_id) {
+        $order = wc_get_order($order_id);
+        $store_name = $order->get_meta('_pickup_store_name');
+        
+        if (!$store_name) {
+            return;
+        }
+        
+        $store_address = $order->get_meta('_pickup_store_address');
+        $store_hours = $order->get_meta('_pickup_store_hours');
+        $store_phone = $order->get_meta('_pickup_store_phone');
+        $store_email = $order->get_meta('_pickup_store_email');
+        $notice = get_option('wcps_pickup_notice', '');
+        $thankyou_title = get_option('wcps_thankyou_title', 'Pickup Order Information');
+        
+        $label_store = get_option('wcps_label_store', '🏪 Store');
+        $label_address = get_option('wcps_label_address', '📍 Address');
+        $label_hours = get_option('wcps_label_hours', '🕒 Business Hours');
+        $label_phone = get_option('wcps_label_phone', '📞 Phone');
+        $label_email = get_option('wcps_label_email', '📧 Email');
+        ?>
+        
+        <div class="wcps-pickup-info">
+            <h3>📦 <?php echo esc_html($thankyou_title); ?></h3>
+            <p><strong><?php echo esc_html($label_store); ?>:</strong><br><?php echo esc_html($store_name); ?></p>
+            
+            <?php if ($store_address): ?>
+                <p><strong><?php echo esc_html($label_address); ?>:</strong><br><?php echo nl2br(esc_html($store_address)); ?></p>
+            <?php endif; ?>
+            
+            <?php if ($store_hours): ?>
+                <p><strong><?php echo esc_html($label_hours); ?>:</strong><br><?php echo nl2br(esc_html($store_hours)); ?></p>
+            <?php endif; ?>
+            
+            <?php if ($store_phone): ?>
+                <p><strong><?php echo esc_html($label_phone); ?>:</strong><br><?php echo esc_html($store_phone); ?></p>
+            <?php endif; ?>
+            
+            <?php if ($store_email): ?>
+                <p><strong><?php echo esc_html($label_email); ?>:</strong><br><?php echo esc_html($store_email); ?></p>
+            <?php endif; ?>
+            
+            <?php if ($notice): ?>
+                <p><strong>📋 <?php esc_html_e('Note:', 'wc-pickup-store-main'); ?></strong><br><?php echo wp_kses_post($notice); ?></p>
+            <?php endif; ?>
+        </div>
+        
+        <style>
+            .wcps-pickup-info {
+                margin-top: 20px;
+                padding: 20px;
+                background: #f7fbf3;
+                border: 1px solid #d9edc7;
+                border-left: 4px solid #7ad03a;
+                border-radius: 12px;
+            }
+            .wcps-pickup-info h3 {
+                margin: 0 0 12px;
+                font-size: 18px;
+            }
+            .wcps-pickup-info p {
+                margin: 8px 0;
+            }
+        </style>
+        <?php
     }
     
-    $store_address = $order->get_meta('_pickup_store_address');
-    $store_hours = $order->get_meta('_pickup_store_hours');
-    $store_phone = $order->get_meta('_pickup_store_phone');
-    $store_email = $order->get_meta('_pickup_store_email');
-    $notice = get_option('wcps_pickup_notice', '');
-    $thankyou_title = get_option('wcps_thankyou_title', 'Pickup Order Information');
-    
-    // Get customizable labels
-    $label_store = get_option('wcps_label_store', '🏪 Store');
-    $label_address = get_option('wcps_label_address', '📍 Address');
-    $label_hours = get_option('wcps_label_hours', '🕒 Business Hours');
-    $label_phone = get_option('wcps_label_phone', '📞 Phone');
-    $label_email = get_option('wcps_label_email', '📧 Email');
-    
-    if ($plain_text) {
-        echo "\n========================================\n";
-        echo esc_html($thankyou_title) . "\n";
-        echo esc_html($label_store) . ': ' . $store_name . "\n";
-        if ($store_address) echo esc_html($label_address) . ': ' . strip_tags($store_address) . "\n";
-        if ($store_hours) echo esc_html($label_hours) . ': ' . strip_tags($store_hours) . "\n";
-        if ($store_phone) echo esc_html($label_phone) . ': ' . $store_phone . "\n";
-        if ($store_email) echo esc_html($label_email) . ': ' . $store_email . "\n";
-        if ($notice) echo strip_tags($notice) . "\n";
-        echo "========================================\n";
-    } else {
-        echo '<div style="margin-top: 20px; padding: 15px; background: #f0f0f0; border-left: 4px solid #7ad03a;">';
-        echo '<h3>' . esc_html($thankyou_title) . '</h3>';
-        echo '<p><strong>' . esc_html($label_store) . ':</strong><br>' . esc_html($store_name) . '</p>';
-        if ($store_address) echo '<p><strong>' . esc_html($label_address) . ':</strong><br>' . nl2br(esc_html($store_address)) . '</p>';
-        if ($store_hours) echo '<p><strong>' . esc_html($label_hours) . ':</strong><br>' . nl2br(esc_html($store_hours)) . '</p>';
-        if ($store_phone) echo '<p><strong>' . esc_html($label_phone) . ':</strong><br>' . esc_html($store_phone) . '</p>';
-        if ($store_email) echo '<p><strong>' . esc_html($label_email) . ':</strong><br>' . esc_html($store_email) . '</p>';
-        if ($notice) echo '<p><strong>' . __('Note:', 'wc-pickup-store') . '</strong><br>' . wp_kses_post($notice) . '</p>';
-        echo '</div>';
+    public function display_pickup_info_email($order, $sent_to_admin, $plain_text, $email) {
+        $store_name = $order->get_meta('_pickup_store_name');
+        
+        if (!$store_name || $sent_to_admin) {
+            return;
+        }
+        
+        $store_address = $order->get_meta('_pickup_store_address');
+        $store_hours = $order->get_meta('_pickup_store_hours');
+        $store_phone = $order->get_meta('_pickup_store_phone');
+        $store_email = $order->get_meta('_pickup_store_email');
+        $notice = get_option('wcps_pickup_notice', '');
+        $thankyou_title = get_option('wcps_thankyou_title', 'Pickup Order Information');
+        
+        $label_store = get_option('wcps_label_store', '🏪 Store');
+        $label_address = get_option('wcps_label_address', '📍 Address');
+        $label_hours = get_option('wcps_label_hours', '🕒 Business Hours');
+        $label_phone = get_option('wcps_label_phone', '📞 Phone');
+        $label_email = get_option('wcps_label_email', '📧 Email');
+        
+        if ($plain_text) {
+            echo "\n========================================\n";
+            echo esc_html($thankyou_title) . "\n";
+            echo esc_html($label_store) . ': ' . esc_html($store_name) . "\n";
+            if ($store_address) {
+                echo esc_html($label_address) . ': ' . esc_html(wp_strip_all_tags($store_address)) . "\n";
+            }
+            if ($store_hours) {
+                echo esc_html($label_hours) . ': ' . esc_html(wp_strip_all_tags($store_hours)) . "\n";
+            }
+            if ($store_phone) {
+                echo esc_html($label_phone) . ': ' . esc_html($store_phone) . "\n";
+            }
+            if ($store_email) {
+                echo esc_html($label_email) . ': ' . esc_html($store_email) . "\n";
+            }
+            if ($notice) {
+                echo esc_html(wp_strip_all_tags($notice)) . "\n";
+            }
+            echo "========================================\n";
+        } else {
+            echo '<div style="margin-top: 20px; padding: 15px; background: #f0f0f0; border-left: 4px solid #7ad03a;">';
+            echo '<h3>' . esc_html($thankyou_title) . '</h3>';
+            echo '<p><strong>' . esc_html($label_store) . ':</strong><br>' . esc_html($store_name) . '</p>';
+            if ($store_address) {
+                echo '<p><strong>' . esc_html($label_address) . ':</strong><br>' . nl2br(esc_html($store_address)) . '</p>';
+            }
+            if ($store_hours) {
+                echo '<p><strong>' . esc_html($label_hours) . ':</strong><br>' . nl2br(esc_html($store_hours)) . '</p>';
+            }
+            if ($store_phone) {
+                echo '<p><strong>' . esc_html($label_phone) . ':</strong><br>' . esc_html($store_phone) . '</p>';
+            }
+            if ($store_email) {
+                echo '<p><strong>' . esc_html($label_email) . ':</strong><br>' . esc_html($store_email) . '</p>';
+            }
+            if ($notice) {
+                echo '<p><strong>' . esc_html__('Note:', 'wc-pickup-store-main') . '</strong><br>' . wp_kses_post($notice) . '</p>';
+            }
+            echo '</div>';
+        }
     }
-}
-
+    
     public function enqueue_scripts() {
         if (is_checkout()) {
             $css_file = WCPS_PLUGIN_DIR . 'assets/css/pickup-style.css';
@@ -330,12 +431,8 @@ public function display_pickup_info_email($order, $sent_to_admin, $plain_text, $
         }
     }
     
-    /**
-     * Admin display - doar numele magazinului (simplu)
-     */
     public function display_pickup_admin_simple($order) {
         $store_name = $order->get_meta('_pickup_store_name');
-        $label_store = get_option('wcps_label_store', '🏪 Store');
         
         if (!$store_name) {
             return;
@@ -343,7 +440,7 @@ public function display_pickup_info_email($order, $sent_to_admin, $plain_text, $
         ?>
         
         <div class="wcps-admin-pickup-simple">
-            <p><strong><?php _e(esc_html($label_store), 'wc-pickup-store'); ?></strong>:  <?php echo esc_html($store_name); ?></p>
+            <p><strong>🏪 <?php esc_html_e('Pickup Store:', 'wc-pickup-store-main'); ?></strong> <?php echo esc_html($store_name); ?></p>
         </div>
         
         <style>
@@ -361,9 +458,6 @@ public function display_pickup_info_email($order, $sent_to_admin, $plain_text, $
         <?php
     }
     
-    /**
-     * Adaugă coloană în lista de comenzi
-     */
     public function add_pickup_store_column($columns) {
         $new_columns = array();
         
@@ -371,16 +465,13 @@ public function display_pickup_info_email($order, $sent_to_admin, $plain_text, $
             $new_columns[$key] = $value;
             
             if ($key === 'order_total') {
-                $new_columns['pickup_store'] = __('Pickup Store', 'wc-pickup-store');
+                $new_columns['pickup_store'] = esc_html__('Pickup Store', 'wc-pickup-store-main');
             }
         }
         
         return $new_columns;
     }
     
-    /**
-     * Afișează conținutul coloanei
-     */
     public function display_pickup_store_column($column, $post_id) {
         if ($column !== 'pickup_store') {
             return;
@@ -395,75 +486,4 @@ public function display_pickup_info_email($order, $sent_to_admin, $plain_text, $
             echo '—';
         }
     }
-    
-/**
- * Afișează informațiile complete pe pagina de mulțumire
- */
-public function display_pickup_info($order_id) {
-    $order = wc_get_order($order_id);
-    $store_name = $order->get_meta('_pickup_store_name');
-    
-    if (!$store_name) {
-        return;
-    }
-    
-    $store_address = $order->get_meta('_pickup_store_address');
-    $store_hours = $order->get_meta('_pickup_store_hours');
-    $store_phone = $order->get_meta('_pickup_store_phone');
-    $store_email = $order->get_meta('_pickup_store_email');
-    $notice = get_option('wcps_pickup_notice', '');
-    $thankyou_title = get_option('wcps_thankyou_title', 'Pickup Order Information');
-    
-    // Get customizable labels
-    $label_store = get_option('wcps_label_store', '🏪 Store');
-    $label_address = get_option('wcps_label_address', '📍 Address');
-    $label_hours = get_option('wcps_label_hours', '🕒 Business Hours');
-    $label_phone = get_option('wcps_label_phone', '📞 Phone');
-    $label_email = get_option('wcps_label_email', '📧 Email');
-    ?>
-    
-    <div class="wcps-pickup-info">
-        <h3>📦 <?php echo esc_html($thankyou_title); ?></h3>
-        <p><strong><?php echo esc_html($label_store); ?>:</strong><br><?php echo esc_html($store_name); ?></p>
-        
-        <?php if ($store_address): ?>
-            <p><strong><?php echo esc_html($label_address); ?>:</strong><br><?php echo nl2br(esc_html($store_address)); ?></p>
-        <?php endif; ?>
-        
-        <?php if ($store_hours): ?>
-            <p><strong><?php echo esc_html($label_hours); ?>:</strong><br><?php echo nl2br(esc_html($store_hours)); ?></p>
-        <?php endif; ?>
-        
-        <?php if ($store_phone): ?>
-            <p><strong><?php echo esc_html($label_phone); ?>:</strong><br><?php echo esc_html($store_phone); ?></p>
-        <?php endif; ?>
-        
-        <?php if ($store_email): ?>
-            <p><strong><?php echo esc_html($label_email); ?>:</strong><br><?php echo esc_html($store_email); ?></p>
-        <?php endif; ?>
-        
-        <?php if ($notice): ?>
-            <p><strong>📋 <?php _e('Note:', 'wc-pickup-store'); ?></strong><br><?php echo wp_kses_post($notice); ?></p>
-        <?php endif; ?>
-    </div>
-    
-    <style>
-        .wcps-pickup-info {
-            margin-top: 20px;
-            padding: 20px;
-            background: #f7fbf3;
-            border: 1px solid #d9edc7;
-            border-left: 4px solid #7ad03a;
-            border-radius: 12px;
-        }
-        .wcps-pickup-info h3 {
-            margin: 0 0 12px;
-            font-size: 18px;
-        }
-        .wcps-pickup-info p {
-            margin: 8px 0;
-        }
-    </style>
-    <?php
-}
 }
