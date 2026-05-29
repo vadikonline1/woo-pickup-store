@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name: WOO Pickup Store
+ * Plugin Name: WooCommerce Local Pickup Store
  * Plugin URI: https://github.com/vadikonline1/woo-pickup-store
  * Description: Adds a "Personal Pickup" shipping method with store selection.
  * Version: 1.0.0
